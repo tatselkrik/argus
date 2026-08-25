@@ -1,0 +1,18 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.gradle-home/
+.externalNativeBuild/
+.cxx/
+
+# Local build and signing artifacts
+build-log.txt
+*.apk
+*.aab
+*.keystore
+*.jks
+keystore.properties
