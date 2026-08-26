@@ -38,5 +38,7 @@ class RoleStoreTest {
         assertTrue(EventTitles.isPower("[Power LOST]"))
         assertTrue(EventTitles.isReboot(EventTitles.REBOOTED))
         assertTrue(EventTitles.isReboot("[Rebooted]"))
+        assertTrue(EventTitles.isVisibleInLog(EventTitles.OFFLINE))
+        assertTrue(!EventTitles.isVisibleInLog(EventTitles.HEARTBEAT))
     }
 }

@@ -13,4 +13,6 @@ object EventTitles {
         title == POWER_LOST || title == POWER_BACK || title.startsWith("[Power")
 
     fun isReboot(title: String): Boolean = title == REBOOTED || title == "[Rebooted]"
+
+    fun isVisibleInLog(title: String): Boolean = title != HEARTBEAT
 }

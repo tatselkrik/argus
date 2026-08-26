@@ -10,7 +10,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.experiment.argus.Ntfy
 import com.experiment.argus.RoleStore
 import java.util.concurrent.TimeUnit
 
@@ -44,7 +43,7 @@ object SentinelJobs {
         PendingAlerts.clear(context)
     }
 
-    /** Tries now, then persists the alert if the network is unavailable. */
+    /** Persists first, then immediately flushes when the network is available. */
     fun sendOrQueueAlert(
         context: Context,
         topic: String,
@@ -53,11 +52,8 @@ object SentinelJobs {
         priority: Int
     ) {
         if (RoleStore.role(context) != "sentinel") return
-        val (ok) = Ntfy.send(topic, title, body, priority)
-        if (ok) return
-
         PendingAlerts.enqueue(context, topic, title, body, priority)
-        scheduleAlertFlush(context)
+        if (!PendingAlerts.flush(context)) scheduleAlertFlush(context)
     }
 
     fun flushPendingNow(context: Context) {

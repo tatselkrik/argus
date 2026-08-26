@@ -60,6 +60,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 role = RoleStore.role(ctx),
                 topic = RoleStore.topic(ctx),
                 topicInput = RoleStore.topic(ctx),
+                events = EventLogStore.load(ctx),
                 lastHbAt = RoleStore.lastHeartbeatAt(ctx),
                 lastBatt = RoleStore.lastBatteryText(ctx),
                 lastPow = RoleStore.lastPowerText(ctx)
@@ -161,7 +162,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         run {
             _state.update {
                 it.copy(
-                    events = (listOf(FeedEvent(title, message, timeSec)) + it.events).take(100),
+                    events = if (!EventTitles.isVisibleInLog(title)) {
+                        it.events
+                    } else {
+                        (listOf(FeedEvent(title, message, timeSec)) + it.events).take(100)
+                    },
                     lastHbAt = RoleStore.lastHeartbeatAt(ctx),
                     lastBatt = RoleStore.lastBatteryText(ctx),
                     lastPow = RoleStore.lastPowerText(ctx)

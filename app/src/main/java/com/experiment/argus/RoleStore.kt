@@ -25,6 +25,7 @@ object RoleStore {
         val editor = prefs(context).edit().putString("topic", normalized)
         if (normalized != this.topic(context)) {
             editor.remove("lastHbAt").remove("lastBatt").remove("lastPow")
+            EventLogStore.clear(context)
         }
         editor.apply()
     }

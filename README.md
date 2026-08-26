@@ -32,11 +32,12 @@ First launch asks for a role.
 - Every **Power lost at home** / **Power is back** / **Phone has rebooted** /
   **[Test]** event
   becomes a heads-up notification on channel *Home events* (high importance).
-- One-minute **[Heartbeat]**s never buzz your phone; they silently refresh the
-  status banner. An hourly WorkManager heartbeat remains as a fallback.
+- One-minute **[Heartbeat]**s never buzz your phone or appear in the live log;
+  they silently refresh the status banner and enable fast offline detection.
+  An hourly WorkManager heartbeat remains as a fallback.
 - If no contact arrives for more than 90 seconds, the companion warns
-  **Home phone is offline**. This means power, Wi-Fi, or internet may be down;
-  silence alone cannot distinguish which one.
+  **Home phone is offline** and records it in the live log. This means power,
+  Wi-Fi, or internet may be down; silence alone cannot distinguish which one.
 - Accept the notification permission prompt on first run (Android 13+).
 
 ## Status banner logic (companion)

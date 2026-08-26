@@ -9,8 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import com.experiment.argus.FeedEvent
 import com.experiment.argus.EventTitles
+import com.experiment.argus.EventLogStore
+import com.experiment.argus.FeedEvent
 import com.experiment.argus.MainActivity
 import com.experiment.argus.Ntfy
 import com.experiment.argus.R
@@ -118,8 +119,10 @@ class EventStreamService : Service() {
                 RoleStore.notePowerEvent(this, title)
         }
         offlineNotified = false
-        StreamBus.events.tryEmit(FeedEvent(title, message, timeSec))
-        if (title != EventTitles.HEARTBEAT) notifyEvent(title, message)
+        val event = FeedEvent(title, message, timeSec)
+        if (EventTitles.isVisibleInLog(title)) EventLogStore.append(this, event)
+        StreamBus.events.tryEmit(event)
+        if (EventTitles.isVisibleInLog(title)) notifyEvent(title, message)
     }
 
     private fun checkForSilence() {
@@ -128,10 +131,16 @@ class EventStreamService : Service() {
         val silentFor = System.currentTimeMillis() - reference
         if (!offlineNotified && silentFor >= OFFLINE_AFTER_MS) {
             offlineNotified = true
-            notifyEvent(
-                EventTitles.OFFLINE,
+            val message =
                 "No contact for more than a minute. This can mean Wi-Fi, internet, or power is unavailable."
+            val event = FeedEvent(
+                EventTitles.OFFLINE,
+                message,
+                System.currentTimeMillis() / 1000L
             )
+            EventLogStore.append(this, event)
+            StreamBus.events.tryEmit(event)
+            notifyEvent(EventTitles.OFFLINE, message)
         }
     }
 
@@ -158,7 +167,7 @@ class EventStreamService : Service() {
         NotificationCompat.Builder(this, CH_SERVICE)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("Argus is watching home")
-            .setContentText("Secure channel connected")
+            .setContentText("Listening for home alerts")
             .setOngoing(true)
             .setContentIntent(mainPendingIntent())
             .build()
