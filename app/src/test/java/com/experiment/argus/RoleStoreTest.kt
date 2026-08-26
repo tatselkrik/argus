@@ -43,12 +43,14 @@ class RoleStoreTest {
     }
 
     @Test
-    fun watchdogTiming_usesHourlyHeartbeatWithThirtyMinuteGracePeriod() {
-        assertEquals(60L, WatchdogTiming.HEARTBEAT_INTERVAL_MINUTES)
-        assertEquals(90L, WatchdogTiming.OFFLINE_AFTER_MINUTES)
+    fun watchdogTiming_warnsOnlyAfterTwoMissedThirtyMinuteHeartbeats() {
+        assertEquals(30L, WatchdogTiming.HEARTBEAT_INTERVAL_MINUTES)
+        assertEquals(2L, WatchdogTiming.MISSED_HEARTBEATS_BEFORE_OFFLINE)
+        assertEquals(60L, WatchdogTiming.OFFLINE_AFTER_MINUTES)
         assertEquals(
-            30L * 60_000L,
-            WatchdogTiming.OFFLINE_AFTER_MS - WatchdogTiming.HEARTBEAT_INTERVAL_MS
+            WatchdogTiming.HEARTBEAT_INTERVAL_MS *
+                WatchdogTiming.MISSED_HEARTBEATS_BEFORE_OFFLINE,
+            WatchdogTiming.OFFLINE_AFTER_MS
         )
     }
 }

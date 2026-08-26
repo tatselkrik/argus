@@ -133,7 +133,7 @@ class EventStreamService : Service() {
         if (!offlineNotified && silentFor >= WatchdogTiming.OFFLINE_AFTER_MS) {
             offlineNotified = true
             val message =
-                "No contact for 1 hour 30 minutes. This can mean Wi-Fi, internet, or power is unavailable."
+                "No contact for one hour (two expected check-ins missed). This can mean Wi-Fi, internet, or power is unavailable."
             val event = FeedEvent(
                 EventTitles.OFFLINE,
                 message,

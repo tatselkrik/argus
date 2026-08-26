@@ -18,7 +18,7 @@ First launch asks for a role.
 
 | Role | Phone | Behavior |
 |---|---|---|
-| **Sentinel** | old phone | Plugged in at home forever. Live charger monitoring, hourly heartbeats, reboot self-report. |
+| **Sentinel** | old phone | Plugged in at home forever. Live charger monitoring, 30-minute heartbeats, reboot self-report. |
 | **Companion** | daily phone | Foreground service keeps a live stream running and raises **system push notifications** (sound + vibration) even when the app is swiped away. |
 
 ## Notifications - how they work
@@ -32,10 +32,11 @@ First launch asks for a role.
 - Every **Power lost at home** / **Power is back** / **Phone has rebooted** /
   **[Test]** event
   becomes a heads-up notification on channel *Home events* (high importance).
-- Hourly **[Heartbeat]**s never buzz your phone or appear in the live log;
+- **[Heartbeat]** check-ins every 30 minutes never buzz your phone or appear in the live log;
   they silently refresh the status banner and enable offline detection.
   An hourly WorkManager heartbeat remains as a fallback.
-- If no contact arrives for 1 hour 30 minutes, the companion warns
+- One missed check-in is tolerated. If no contact arrives for one hour—two
+  consecutive expected check-ins—the companion warns
   **Home phone is offline** and records it in the live log. This means power,
   Wi-Fi, or internet may be down; silence alone cannot distinguish which one.
 - Accept the notification permission prompt on first run (Android 13+).
@@ -44,9 +45,9 @@ First launch asks for a role.
 
 | Condition | Banner |
 |---|---|
-| Contact <= 60 min | green - all good |
-| Silent 60-90 min | amber - waiting for the next check |
-| Silent > 90 min | red - something is wrong |
+| Contact < 30 min | green - all good |
+| Silent 30-<60 min | amber - one expected check-in missed |
+| Silent >= 60 min | red - two expected check-ins missed |
 | Never contacted | neutral - waiting |
 
 ## Setup checklist (sentinel)
@@ -62,7 +63,7 @@ First launch asks for a role.
 ```
 Power lost at home  battery 84% at 27.5C, charging=false
 Power is back       battery 91% at 29.0C, charging=true
-[Heartbeat]   hourly proof of life (no notification)
+[Heartbeat]   30-minute proof of life (no notification)
 Phone has rebooted  sentinel restarted and back on duty
 [Test]        end-to-end check from either phone
 ```

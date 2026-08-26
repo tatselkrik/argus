@@ -328,10 +328,10 @@ fun StatusCard(st: UiState) {
 
     val pair = when {
         ageMin < 0 -> "No signal yet - waiting for first contact" to MaterialTheme.colorScheme.surfaceVariant
-        ageMs <= WatchdogTiming.HEARTBEAT_INTERVAL_MS ->
+        ageMs < WatchdogTiming.HEARTBEAT_INTERVAL_MS ->
             ("Seen " + fmtAgo(ageMin) + " - all good") to MaterialTheme.colorScheme.primaryContainer
-        ageMs <= WatchdogTiming.OFFLINE_AFTER_MS ->
-            ("Silent " + fmtAgo(ageMin) + " - waiting for the next check") to MaterialTheme.colorScheme.tertiaryContainer
+        ageMs < WatchdogTiming.OFFLINE_AFTER_MS ->
+            ("Silent " + fmtAgo(ageMin) + " - one check-in missed") to MaterialTheme.colorScheme.tertiaryContainer
         else -> ("SILENT " + fmtAgo(ageMin) + " - something is wrong") to MaterialTheme.colorScheme.errorContainer
     }
 
