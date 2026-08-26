@@ -19,6 +19,7 @@ import com.experiment.argus.Ntfy
 import com.experiment.argus.R
 import com.experiment.argus.RoleStore
 import com.experiment.argus.SentinelBus
+import com.experiment.argus.WatchdogTiming
 import com.experiment.argus.batterySummary
 import com.experiment.argus.isCharging
 import java.util.concurrent.Executors
@@ -67,8 +68,8 @@ class SentinelService : Service() {
             executor.execute { sendHeartbeat() }
             heartbeatTask = executor.scheduleWithFixedDelay(
                 { sendHeartbeat() },
-                1,
-                1,
+                WatchdogTiming.HEARTBEAT_INTERVAL_MINUTES,
+                WatchdogTiming.HEARTBEAT_INTERVAL_MINUTES,
                 TimeUnit.MINUTES
             )
         }

@@ -41,4 +41,14 @@ class RoleStoreTest {
         assertTrue(EventTitles.isVisibleInLog(EventTitles.OFFLINE))
         assertTrue(!EventTitles.isVisibleInLog(EventTitles.HEARTBEAT))
     }
+
+    @Test
+    fun watchdogTiming_usesHourlyHeartbeatWithThirtyMinuteGracePeriod() {
+        assertEquals(60L, WatchdogTiming.HEARTBEAT_INTERVAL_MINUTES)
+        assertEquals(90L, WatchdogTiming.OFFLINE_AFTER_MINUTES)
+        assertEquals(
+            30L * 60_000L,
+            WatchdogTiming.OFFLINE_AFTER_MS - WatchdogTiming.HEARTBEAT_INTERVAL_MS
+        )
+    }
 }

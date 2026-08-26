@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
@@ -180,7 +182,12 @@ fun SentinelScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val serviceCharging by SentinelBus.charging.collectAsState()
     val charging = serviceCharging ?: isCharging(context)
 
-    Column(modifier.fillMaxSize().padding(20.dp)) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
+    ) {
 
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -239,6 +246,7 @@ fun SentinelScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 }) { Text("Exempt from battery optimization") }
             }
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -320,8 +328,10 @@ fun StatusCard(st: UiState) {
 
     val pair = when {
         ageMin < 0 -> "No signal yet - waiting for first contact" to MaterialTheme.colorScheme.surfaceVariant
-        ageMs <= 90_000L -> ("Seen " + fmtAgo(ageMin) + " - all good") to MaterialTheme.colorScheme.primaryContainer
-        ageMs <= 300_000L -> ("Silent " + fmtAgo(ageMin) + " - check the connection") to MaterialTheme.colorScheme.tertiaryContainer
+        ageMs <= WatchdogTiming.HEARTBEAT_INTERVAL_MS ->
+            ("Seen " + fmtAgo(ageMin) + " - all good") to MaterialTheme.colorScheme.primaryContainer
+        ageMs <= WatchdogTiming.OFFLINE_AFTER_MS ->
+            ("Silent " + fmtAgo(ageMin) + " - waiting for the next check") to MaterialTheme.colorScheme.tertiaryContainer
         else -> ("SILENT " + fmtAgo(ageMin) + " - something is wrong") to MaterialTheme.colorScheme.errorContainer
     }
 

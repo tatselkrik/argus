@@ -17,6 +17,7 @@ import com.experiment.argus.Ntfy
 import com.experiment.argus.R
 import com.experiment.argus.RoleStore
 import com.experiment.argus.StreamBus
+import com.experiment.argus.WatchdogTiming
 import okhttp3.Call
 import kotlin.concurrent.thread
 import java.util.concurrent.atomic.AtomicInteger
@@ -99,7 +100,7 @@ class EventStreamService : Service() {
             while (generation.get() == myGeneration) {
                 checkForSilence()
                 try {
-                    Thread.sleep(15_000)
+                    Thread.sleep(WatchdogTiming.MONITOR_INTERVAL_MS)
                 } catch (_: InterruptedException) {
                     break
                 }
@@ -129,10 +130,10 @@ class EventStreamService : Service() {
         val lastContact = RoleStore.lastHeartbeatAt(this)
         val reference = if (lastContact == 0L) monitoringSince else lastContact
         val silentFor = System.currentTimeMillis() - reference
-        if (!offlineNotified && silentFor >= OFFLINE_AFTER_MS) {
+        if (!offlineNotified && silentFor >= WatchdogTiming.OFFLINE_AFTER_MS) {
             offlineNotified = true
             val message =
-                "No contact for more than a minute. This can mean Wi-Fi, internet, or power is unavailable."
+                "No contact for 1 hour 30 minutes. This can mean Wi-Fi, internet, or power is unavailable."
             val event = FeedEvent(
                 EventTitles.OFFLINE,
                 message,
@@ -198,8 +199,6 @@ class EventStreamService : Service() {
         private const val SERVICE_ID = 42
         private const val CH_EVENTS = "argus_events"
         private const val CH_SERVICE = "argus_service"
-        private const val OFFLINE_AFTER_MS = 90_000L
-
         fun ensureChannels(ctx: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
