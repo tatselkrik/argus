@@ -7,14 +7,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.experiment.argus.push.EventStreamService
 import com.experiment.argus.sentinel.SentinelJobs
+import com.experiment.argus.sentinel.SentinelService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -49,6 +47,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (RoleStore.role(app) == "companion" && RoleStore.topic(app).isNotEmpty()) {
             startStream()
+        } else if (RoleStore.role(app) == "sentinel" && RoleStore.topic(app).isNotEmpty()) {
+            SentinelJobs.ensure(app)
+            runCatching { SentinelService.start(app) }
         }
     }
 
@@ -70,8 +71,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         RoleStore.setRole(getApplication(), role)
         if (role == "sentinel") {
             SentinelJobs.ensure(getApplication())
+            runCatching { SentinelService.start(getApplication()) }
         } else {
             SentinelJobs.cancel(getApplication())
+            SentinelService.stop(getApplication())
         }
         if (role == "companion") {
             startStream()
@@ -93,6 +96,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         when (_state.value.role) {
             "sentinel" -> {
                 SentinelJobs.ensure(getApplication())
+                runCatching { SentinelService.start(getApplication()) }
                 stopStream()
             }
             "companion" -> {
@@ -115,7 +119,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         _state.update { it.copy(busy = true) }
         viewModelScope.launch(Dispatchers.IO) {
-            val (ok, detail) = Ntfy.send(topic, "[Test]", "Hello from " +
+            val (ok, detail) = Ntfy.send(topic, EventTitles.TEST, "Hello from " +
                 (if (RoleStore.role(getApplication()) == "sentinel") "the home phone." else "your pocket phone."),
                 priority = 3)
             withContext(Dispatchers.Main) {
@@ -149,9 +153,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleEvent(title: String, message: String, timeSec: Long) {
         val ctx = getApplication<Application>()
         when {
-            title == "[Heartbeat]" -> RoleStore.noteHeartbeat(ctx, message, RoleStore.lastPowerText(ctx))
-            title.startsWith("[Power") -> RoleStore.notePowerEvent(ctx, title + "  " + message)
-            title == "[Rebooted]" -> RoleStore.notePowerEvent(ctx, title)
+            title == EventTitles.HEARTBEAT ->
+                RoleStore.noteHeartbeat(ctx, message, RoleStore.lastPowerText(ctx))
+            EventTitles.isPower(title) -> RoleStore.notePowerEvent(ctx, title + "  " + message)
+            EventTitles.isReboot(title) -> RoleStore.notePowerEvent(ctx, title)
         }
         run {
             _state.update {

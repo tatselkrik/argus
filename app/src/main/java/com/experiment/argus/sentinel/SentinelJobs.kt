@@ -3,18 +3,20 @@ package com.experiment.argus.sentinel
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
-import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.experiment.argus.Ntfy
 import com.experiment.argus.RoleStore
 import java.util.concurrent.TimeUnit
 
 object SentinelJobs {
     private const val HEARTBEAT_WORK = "hourly-heartbeat"
-    private const val ALERT_RETRY_TAG = "sentinel-alert-retry"
+    private const val ALERT_RETRY_WORK = "sentinel-alert-retry"
 
     private val connected = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -37,12 +39,13 @@ object SentinelJobs {
     fun cancel(context: Context) {
         WorkManager.getInstance(context).run {
             cancelUniqueWork(HEARTBEAT_WORK)
-            cancelAllWorkByTag(ALERT_RETRY_TAG)
+            cancelUniqueWork(ALERT_RETRY_WORK)
         }
+        PendingAlerts.clear(context)
     }
 
-    /** Persists a failed alert and retries it with exponential backoff. */
-    fun retryAlert(
+    /** Tries now, then persists the alert if the network is unavailable. */
+    fun sendOrQueueAlert(
         context: Context,
         topic: String,
         title: String,
@@ -50,18 +53,27 @@ object SentinelJobs {
         priority: Int
     ) {
         if (RoleStore.role(context) != "sentinel") return
-        val input = Data.Builder()
-            .putString(AlertRetryWorker.KEY_TOPIC, topic)
-            .putString(AlertRetryWorker.KEY_TITLE, title)
-            .putString(AlertRetryWorker.KEY_BODY, body)
-            .putInt(AlertRetryWorker.KEY_PRIORITY, priority)
-            .build()
+        val (ok) = Ntfy.send(topic, title, body, priority)
+        if (ok) return
+
+        PendingAlerts.enqueue(context, topic, title, body, priority)
+        scheduleAlertFlush(context)
+    }
+
+    fun flushPendingNow(context: Context) {
+        if (!PendingAlerts.flush(context)) scheduleAlertFlush(context)
+    }
+
+    private fun scheduleAlertFlush(context: Context) {
         val request = OneTimeWorkRequestBuilder<AlertRetryWorker>()
-            .setInputData(input)
             .setConstraints(connected)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .addTag(ALERT_RETRY_TAG)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
-        WorkManager.getInstance(context).enqueue(request)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            ALERT_RETRY_WORK,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
     }
 }

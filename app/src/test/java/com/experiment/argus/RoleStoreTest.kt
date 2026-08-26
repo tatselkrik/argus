@@ -30,4 +30,13 @@ class RoleStoreTest {
         assertTrue(topics.all { it.matches(Regex("drawer-[abcdefghjkmnpqrstuvwxyz23456789]{16}")) })
         assertEquals(topics.size, topics.toSet().size)
     }
+
+    @Test
+    fun eventTitles_recognizeCurrentAndLegacyPowerEvents() {
+        assertTrue(EventTitles.isPower(EventTitles.POWER_LOST))
+        assertTrue(EventTitles.isPower(EventTitles.POWER_BACK))
+        assertTrue(EventTitles.isPower("[Power LOST]"))
+        assertTrue(EventTitles.isReboot(EventTitles.REBOOTED))
+        assertTrue(EventTitles.isReboot("[Rebooted]"))
+    }
 }

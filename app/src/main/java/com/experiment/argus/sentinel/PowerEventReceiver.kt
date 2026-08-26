@@ -3,17 +3,18 @@ package com.experiment.argus.sentinel
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.experiment.argus.Ntfy
+import com.experiment.argus.EventTitles
 import com.experiment.argus.RoleStore
+import com.experiment.argus.SentinelBus
 import com.experiment.argus.batterySummary
 
 /**
- * Manifest-registered receiver for ACTION_POWER_CONNECTED / DISCONNECTED.
- * These broadcasts are exempt from Android's implicit-broadcast ban, so this
- * fires even if the system killed the app. This is the whole point of the app:
- * charger state = cheap, reliable power-cut detection.
+ * Runtime receiver owned by SentinelService. The service keeps registration
+ * active on Samsung/modern Android devices that suppress manifest delivery.
  */
-class PowerEventReceiver : BroadcastReceiver() {
+class PowerEventReceiver(
+    private val onPowerChanged: ((charging: Boolean) -> Unit)? = null
+) : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (RoleStore.role(context) != "sentinel") return
@@ -21,14 +22,15 @@ class PowerEventReceiver : BroadcastReceiver() {
         if (topic.isEmpty()) return
 
         val lost = intent.action == Intent.ACTION_POWER_DISCONNECTED
+        SentinelBus.charging.value = !lost
+        onPowerChanged?.invoke(!lost)
         val pending = goAsync()
         Thread {
             try {
-                val title = if (lost) "[Power LOST]" else "[Power back]"
-                val body = batterySummary(context)
+                val title = if (lost) EventTitles.POWER_LOST else EventTitles.POWER_BACK
+                val body = batterySummary(context, chargingOverride = !lost)
                 val priority = if (lost) 4 else 3
-                val (ok) = Ntfy.send(topic, title, body, priority = priority)
-                if (!ok) SentinelJobs.retryAlert(context, topic, title, body, priority)
+                SentinelJobs.sendOrQueueAlert(context, topic, title, body, priority)
                 SentinelJobs.ensure(context)
             } catch (_: Exception) {
             } finally {

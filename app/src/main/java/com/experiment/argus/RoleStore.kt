@@ -20,13 +20,22 @@ object RoleStore {
 
     // topic (shared channel name)
     fun topic(context: Context): String = prefs(context).getString("topic", "") ?: ""
-    fun setTopic(context: Context, topic: String) =
-        prefs(context).edit().putString("topic", topic.trim()).apply()
+    fun setTopic(context: Context, topic: String) {
+        val normalized = topic.trim()
+        val editor = prefs(context).edit().putString("topic", normalized)
+        if (normalized != this.topic(context)) {
+            editor.remove("lastHbAt").remove("lastBatt").remove("lastPow")
+        }
+        editor.apply()
+    }
 
     // companion-side last known state
     fun lastHeartbeatAt(context: Context): Long = prefs(context).getLong("lastHbAt", 0L)
     fun lastBatteryText(context: Context): String = prefs(context).getString("lastBatt", "") ?: ""
     fun lastPowerText(context: Context): String = prefs(context).getString("lastPow", "") ?: ""
+
+    fun noteContact(context: Context) =
+        prefs(context).edit().putLong("lastHbAt", System.currentTimeMillis()).apply()
 
     fun noteHeartbeat(context: Context, batteryText: String, powerText: String) =
         prefs(context).edit()

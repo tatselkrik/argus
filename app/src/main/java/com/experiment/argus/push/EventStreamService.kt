@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.experiment.argus.FeedEvent
+import com.experiment.argus.EventTitles
 import com.experiment.argus.MainActivity
 import com.experiment.argus.Ntfy
 import com.experiment.argus.R
@@ -34,6 +35,9 @@ class EventStreamService : Service() {
     private val generation = AtomicInteger(0)
     private val activeCall = AtomicReference<Call?>(null)
     private var worker: Thread? = null
+    private var monitor: Thread? = null
+    @Volatile private var offlineNotified = false
+    @Volatile private var monitoringSince = 0L
 
     override fun onBind(intent: Intent?) = null
 
@@ -54,6 +58,8 @@ class EventStreamService : Service() {
         // restart the stream thread cleanly if topic changed or service re-started
         stopStreamWorker()
         val myGeneration = generation.incrementAndGet()
+        monitoringSince = System.currentTimeMillis()
+        offlineNotified = false
         worker = thread(name = "argus-stream") {
             while (generation.get() == myGeneration) {
                 if (RoleStore.role(applicationContext) != "companion") break
@@ -88,17 +94,45 @@ class EventStreamService : Service() {
             }
             if (generation.get() == myGeneration) StreamBus.running.value = false
         }
+        monitor = thread(name = "argus-health-monitor") {
+            while (generation.get() == myGeneration) {
+                checkForSilence()
+                try {
+                    Thread.sleep(15_000)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+        }
         return START_STICKY
     }
 
     private fun deliver(title: String, message: String, timeSec: Long) {
+        RoleStore.noteContact(this)
         when {
-            title == "[Heartbeat]" -> RoleStore.noteHeartbeat(this, message, RoleStore.lastPowerText(this))
-            title.startsWith("[Power") -> RoleStore.notePowerEvent(this, title + "  " + message)
-            title == "[Rebooted]" -> RoleStore.notePowerEvent(this, title)
+            title == EventTitles.HEARTBEAT ->
+                RoleStore.noteHeartbeat(this, message, RoleStore.lastPowerText(this))
+            EventTitles.isPower(title) ->
+                RoleStore.notePowerEvent(this, title + "  " + message)
+            EventTitles.isReboot(title) ->
+                RoleStore.notePowerEvent(this, title)
         }
+        offlineNotified = false
         StreamBus.events.tryEmit(FeedEvent(title, message, timeSec))
-        if (title != "[Heartbeat]") notifyEvent(title, message)
+        if (title != EventTitles.HEARTBEAT) notifyEvent(title, message)
+    }
+
+    private fun checkForSilence() {
+        val lastContact = RoleStore.lastHeartbeatAt(this)
+        val reference = if (lastContact == 0L) monitoringSince else lastContact
+        val silentFor = System.currentTimeMillis() - reference
+        if (!offlineNotified && silentFor >= OFFLINE_AFTER_MS) {
+            offlineNotified = true
+            notifyEvent(
+                EventTitles.OFFLINE,
+                "No contact for more than a minute. This can mean Wi-Fi, internet, or power is unavailable."
+            )
+        }
     }
 
     override fun onDestroy() {
@@ -113,6 +147,9 @@ class EventStreamService : Service() {
         worker?.interrupt()
         worker?.join(1000)
         worker = null
+        monitor?.interrupt()
+        monitor?.join(1000)
+        monitor = null
     }
 
     // ------------------------------------------------------------- notifications
@@ -152,6 +189,7 @@ class EventStreamService : Service() {
         private const val SERVICE_ID = 42
         private const val CH_EVENTS = "argus_events"
         private const val CH_SERVICE = "argus_service"
+        private const val OFFLINE_AFTER_MS = 90_000L
 
         fun ensureChannels(ctx: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

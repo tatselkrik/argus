@@ -18,28 +18,34 @@ First launch asks for a role.
 
 | Role | Phone | Behavior |
 |---|---|---|
-| **Sentinel** | old phone | Plugged in at home forever. Instant alerts on power lost / restored, hourly heartbeats, reboot self-report. |
+| **Sentinel** | old phone | Plugged in at home forever. Live charger monitoring, one-minute heartbeats, reboot self-report. |
 | **Companion** | daily phone | Foreground service keeps a live stream running and raises **system push notifications** (sound + vibration) even when the app is swiped away. |
 
-## Push notifications - how they work
+## Notifications - how they work
 
 - The companion runs an **Android foreground service** holding the ntfy stream.
+- The sentinel runs its own **foreground watchdog service**, which keeps
+  Samsung/modern Android charger monitoring active after the app is swiped away.
 - You will see a quiet, permanent notification: *"Argus is watching home"*.
   That is the trade Android requires for background work - and it doubles as a
   heartbeat you can glance at.
-- Every **[Power LOST]** / **[Power back]** / **[Rebooted]** / **[Test]** event
+- Every **Power lost at home** / **Power is back** / **Phone has rebooted** /
+  **[Test]** event
   becomes a heads-up notification on channel *Home events* (high importance).
-- Hourly **[Heartbeat]**s never buzz your phone; they silently refresh the
-  status banner.
+- One-minute **[Heartbeat]**s never buzz your phone; they silently refresh the
+  status banner. An hourly WorkManager heartbeat remains as a fallback.
+- If no contact arrives for more than 90 seconds, the companion warns
+  **Home phone is offline**. This means power, Wi-Fi, or internet may be down;
+  silence alone cannot distinguish which one.
 - Accept the notification permission prompt on first run (Android 13+).
 
 ## Status banner logic (companion)
 
 | Condition | Banner |
 |---|---|
-| Contact < 2 h | green - "Seen X min ago - all good" |
-| Silent 2-6 h | amber - check on it soon |
-| Silent > 6 h | red - "SILENT - something is wrong" |
+| Contact < 90 sec | green - all good |
+| Silent 90 sec-5 min | amber - check the connection |
+| Silent > 5 min | red - something is wrong |
 | Never contacted | neutral - waiting |
 
 ## Setup checklist (sentinel)
@@ -53,19 +59,21 @@ First launch asks for a role.
 ## Alerts reference
 
 ```
-[Power LOST]  battery 84% at 27.5C, charging=false   <- high priority push
-[Power back]  battery 91% at 29.0C, charging=true
-[Heartbeat]   hourly proof of life (no notification)
-[Rebooted]    sentinel restarted and back on duty
+Power lost at home  battery 84% at 27.5C, charging=false
+Power is back       battery 91% at 29.0C, charging=true
+[Heartbeat]   one-minute proof of life (no notification)
+Phone has rebooted  sentinel restarted and back on duty
 [Test]        end-to-end check from either phone
 ```
 
 ## Honest notes
 
 - The channel name IS the password - keep the generated random one.
-- Heartbeats are hourly, so silence-detection granularity is ~1 h; power-cut
-  alerts themselves are instant while any network path exists.
-- If the router dies with the outage, the sentinel retries until ntfy accepts.
+- Power-cut alerts are immediate while a network path exists.
+- If the router dies with the outage, the alert is stored locally and sent as
+  soon as connectivity returns.
+- Wi-Fi loss by itself is reported as **Home phone is offline**, never falsely
+  labeled as a power cut.
 - Aggressive OEM battery managers are the main enemy; the in-app exemption +
   Samsung never-sleep setting handles the common cases.
 - Roadmap: camera/mic event clips, BLE thermometer drift alerts,
@@ -90,7 +98,8 @@ app/src/main/java/com/experiment/argus/
   RoleStore.kt                 role/topic/status persistence
   BatteryInfo.kt               level/temp/charging reads
   push/EventStreamService.kt   foreground service: stream + notifications
-  sentinel/                    power receiver, boot receiver, hourly worker
+  sentinel/SentinelService.kt  live power/network watchdog
+  sentinel/                    power/boot receivers, durable retries, fallback worker
 ```
 
 minSdk 24 - Kotlin 2.2 - Compose M3 - OkHttp - WorkManager - foreground service

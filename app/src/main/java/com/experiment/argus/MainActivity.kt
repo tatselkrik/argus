@@ -23,11 +23,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -49,9 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -179,7 +177,8 @@ fun TopicEditor(st: UiState, vm: MainViewModel) {
 fun SentinelScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val st by vm.state.collectAsState()
-    var charging by remember { mutableStateOf(isCharging(context)) }
+    val serviceCharging by SentinelBus.charging.collectAsState()
+    val charging = serviceCharging ?: isCharging(context)
 
     Column(modifier.fillMaxSize().padding(20.dp)) {
 
@@ -209,7 +208,7 @@ fun SentinelScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (st.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             OutlinedButton(onClick = { vm.testAlert() }) {
-                Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.size(6.dp))
                 Text("Send test alert")
             }
@@ -316,12 +315,13 @@ fun CompanionScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 @Composable
 fun StatusCard(st: UiState) {
     val now = System.currentTimeMillis()
-    val ageMin = if (st.lastHbAt == 0L) -1 else ((now - st.lastHbAt) / 60000L).toInt()
+    val ageMs = if (st.lastHbAt == 0L) -1L else now - st.lastHbAt
+    val ageMin = if (ageMs < 0L) -1 else (ageMs / 60000L).toInt()
 
     val pair = when {
         ageMin < 0 -> "No signal yet - waiting for first contact" to MaterialTheme.colorScheme.surfaceVariant
-        ageMin <= 120 -> ("Seen " + fmtAgo(ageMin) + " - all good") to MaterialTheme.colorScheme.primaryContainer
-        ageMin <= 360 -> ("Silent " + fmtAgo(ageMin) + " - check on it soon") to MaterialTheme.colorScheme.tertiaryContainer
+        ageMs <= 90_000L -> ("Seen " + fmtAgo(ageMin) + " - all good") to MaterialTheme.colorScheme.primaryContainer
+        ageMs <= 300_000L -> ("Silent " + fmtAgo(ageMin) + " - check the connection") to MaterialTheme.colorScheme.tertiaryContainer
         else -> ("SILENT " + fmtAgo(ageMin) + " - something is wrong") to MaterialTheme.colorScheme.errorContainer
     }
 
@@ -343,5 +343,6 @@ fun fmtTime(sec: Long): String =
     SimpleDateFormat("MMM d  HH:mm", Locale.getDefault()).format(Date(sec * 1000L))
 
 fun fmtAgo(minutes: Int): String =
-    if (minutes < 60) minutes.toString() + " min ago"
+    if (minutes <= 0) "just now"
+    else if (minutes < 60) minutes.toString() + " min ago"
     else (minutes / 60).toString() + " h " + (minutes % 60) + " m ago"

@@ -30,10 +30,11 @@ fun readBattery(context: Context): BatteryState {
     return BatteryState(level, tempC, charging)
 }
 
-fun batterySummary(context: Context): String {
+fun batterySummary(context: Context, chargingOverride: Boolean? = null): String {
     val s = readBattery(context)
     val t = s.tempC?.toString() ?: "?"
-    return "battery " + s.levelPct + "% at " + t + "C, charging=" + s.charging
+    val charging = chargingOverride ?: s.charging
+    return "battery " + s.levelPct + "% at " + t + "C, charging=" + charging
 }
 
 fun isCharging(context: Context): Boolean = readBattery(context).charging

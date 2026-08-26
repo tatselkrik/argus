@@ -3,6 +3,7 @@ package com.experiment.argus.sentinel
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.experiment.argus.EventTitles
 import com.experiment.argus.Ntfy
 import com.experiment.argus.RoleStore
 import com.experiment.argus.batterySummary
@@ -21,7 +22,7 @@ class HeartbeatWorker(
         if (topic.isEmpty()) return Result.success()
         val summary = batterySummary(applicationContext)
         val (ok) = withContext(Dispatchers.IO) {
-            Ntfy.send(topic, "[Heartbeat]", summary)
+            Ntfy.send(topic, EventTitles.HEARTBEAT, summary)
         }
         return if (ok) Result.success() else Result.retry()
     }

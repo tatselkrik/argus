@@ -13,7 +13,14 @@ import java.util.concurrent.TimeUnit
  */
 object Ntfy {
 
-    private val client = OkHttpClient.Builder()
+    private val sendClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .writeTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
+        .build()
+
+    private val streamClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // streams must never read-timeout
         .build()
@@ -26,7 +33,7 @@ object Ntfy {
                 .post(body.toRequestBody(null))
                 .header("Title", title)
             if (priority != null) builder.header("Priority", priority.toString())
-            client.newCall(builder.build()).execute().use { resp ->
+            sendClient.newCall(builder.build()).execute().use { resp ->
                 Pair(resp.isSuccessful, "HTTP " + resp.code)
             }
         } catch (e: Exception) {
@@ -45,7 +52,7 @@ object Ntfy {
     ) {
         try {
             val req = Request.Builder().url("https://ntfy.sh/" + topic + "/json").build()
-            val call = client.newCall(req)
+            val call = streamClient.newCall(req)
             onCallReady(call)
             call.execute().use { resp ->
                 if (!resp.isSuccessful) return
