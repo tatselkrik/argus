@@ -6,6 +6,7 @@ local.properties
 *.iml
 captures/
 .gradle-home/
+.android-user/
 .externalNativeBuild/
 .cxx/
 
@@ -16,3 +17,5 @@ build-log.txt
 *.keystore
 *.jks
 keystore.properties
+signing/
+release/

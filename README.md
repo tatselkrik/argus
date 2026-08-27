@@ -1,129 +1,190 @@
-# Argus 🛡️
+<h1 align="center">Argus 🛡️</h1>
 
-Named for Argus Panoptes, the hundred-eyed guardian. One or more old Android
-phones become home watchdogs; your daily phone gets real push notifications.
+<p align="center">
+  <a href="https://github.com/tatselkrik/argus/actions/workflows/quality.yml"><img src="https://github.com/tatselkrik/argus/actions/workflows/quality.yml/badge.svg" alt="Quality checks"></a>
+  <img src="https://img.shields.io/badge/version-1.0.0-2563eb" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 7.0 or newer">
+  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-6b7280" alt="PolyForm Noncommercial License 1.0.0">
+</p>
 
-No accounts. No server. No subscription. Events travel over ntfy.sh (free
-public pub/sub); a random channel name is your private key.
+<p align="center">
+  Account-free, multi-phone power and connectivity monitoring using old Android phones.
+</p>
+
+<p align="center">
+  <strong>Version 1.0.0</strong> · Android 7.0+ · No subscription · Personal project
+</p>
+
+> [!IMPORTANT]
+> Argus is a personal project, but feel free to use, adapt, or build on it for
+> personal and other noncommercial purposes. It is an alerting aid, not a
+> life-safety system. See the [license](#license) and
+> [privacy and security](#privacy-and-security) notes before using it.
+
+## What Argus does
+
+Argus turns one or more spare Android phones into named **Home** monitors. An
+**Away** phone receives alerts when mains power is lost or restored, when a
+Home phone reboots, or when a selected Home phone stops checking in.
+
+The same APK supports both roles. Monitoring runs only after **Start** is
+pressed and can be stopped explicitly on either role.
+
+~~~mermaid
+flowchart LR
+    A[Home phone 1] --> C[Private shared ntfy channel]
+    B[Home phone 2+] --> C
+    C --> D[Away phone]
+    D --> E[Named alerts and per-phone status]
+~~~
+
+## Version 1 features
+
+- Immediate charger-disconnect and power-restoration detection while a network
+  path is available.
+- Named Home and Away phones.
+- Multiple Home phones on one channel.
+- Away-phone monitoring of all discovered Home phones or a selected subset.
+- Dedicated power-loss, power-restored, reboot, test, and offline alerts.
+- Silent 30-minute check-ins with an offline warning only after two expected
+  check-ins are missed.
+- Intentional **Stop** state so planned pauses do not normally become false
+  offline warnings.
+- Persistent event history with swipe-left or swipe-right deletion per entry.
+- Background monitoring across app closure and device reboot while monitoring
+  remains started.
+- No Argus account, subscription, analytics, advertising, location access, SMS,
+  or phone-call permission.
 
 ## Install
 
-Same APK on both phones:
+When a GitHub release is available, download its signed
+<code>argus-v1.0.0.apk</code> on each phone and allow installation from that
+browser or file manager when Android asks. Install the same APK on every Home
+and Away phone.
 
-```
-adb install app/build/outputs/apk/debug/app-debug.apk
-```
+The V1 package identity is <code>io.github.tatselkrik.argus</code>. Earlier
+development builds used a different identity, so remove the old development
+copy after confirming that V1 appears as a separate app. Settings do not
+migrate between the two.
 
-First launch asks for a role.
+## Set up the phones
 
-| Role | Phone | Behavior |
-|---|---|---|
-| **Home** | old phone(s) | Each has its own saved name. After **Start**, it monitors charging, sends 30-minute check-ins, and reports reboots. |
-| **Away** | daily phone | After **Start**, it listens for named home phones and raises **system notifications** for all or only the phones you select. |
+### Home phone
 
-Monitoring is deliberately user-controlled. **Start** keeps the selected role
-active in the background and across reboot. **Stop** cancels its services,
-heartbeats, queued alerts, and offline detection.
+1. Choose **Home** and save a unique name such as <code>S10 Plus</code>.
+2. Generate and save a channel, then share it privately with the Away phone.
+3. Plug the phone into the charger and connect it to Wi-Fi.
+4. Use the in-app battery-optimization button. On Samsung, also add Argus under
+   **Settings → Battery → Background usage limits → Never sleeping apps**.
+5. Press **Start**. The screen may then remain off.
 
-When a connected home phone is stopped intentionally, it sends one silent
-state update so the away phone shows **Home monitoring stopped** instead of
-later reporting that phone offline. If that update cannot be delivered because
-the network is already unavailable, the away phone may still report silence.
+Repeat these steps for any additional Home phones, using a different name but
+the same channel.
 
-## Notifications - how they work
+### Away phone
 
-- The away phone runs an **Android foreground service** holding the ntfy stream.
-- Each home phone runs its own **foreground watchdog service**, which keeps
-  Samsung/modern Android charger monitoring active after the app is swiped away.
-- While started, you will see a quiet, permanent Argus notification.
-  That is the trade Android requires for background work - and it doubles as a
-  heartbeat you can glance at.
-- Every selected home phone is identified by name. Notifications are labeled,
-  for example, **S10 Plus: Power lost at home** or **S10 Plus is offline**.
-- **[Heartbeat]** check-ins every 30 minutes never buzz your phone or appear
-  in the live log;
-  they silently refresh the status banner and enable offline detection.
-  An hourly WorkManager heartbeat remains as a fallback.
-- One missed check-in is tolerated. If no contact arrives for one hour—two
-  consecutive expected check-ins—the away phone warns
-  **<phone name> is offline** and records it in the live log. This means power,
-  Wi-Fi, or internet may be down; silence alone cannot distinguish which one.
-- Accept the notification permission prompt when pressing **Start** (Android 13+).
+1. Choose **Away**, save its name, and enter the same channel.
+2. Press **Start** and allow notifications.
+3. Keep **Monitor all home phones** enabled, or turn it off and select only the
+   discovered Home phones you want to monitor.
 
-## Per-phone status logic (away phone)
+Use **Switch role** if a phone needs a different role. The role picker includes
+a Back button, so opening it does not force a change.
 
-| Condition | Status |
+## Notifications and status
+
+Examples:
+
+~~~text
+S10 Plus: Power lost at home
+S10 Plus: Power is back
+S10 Plus: Phone has rebooted
+S10 Plus is offline
+~~~
+
+| Home-phone condition | Away-phone status |
 |---|---|
-| Contact < 30 min | green - all good |
-| Silent 30-<60 min | amber - one expected check-in missed |
-| Silent >= 60 min | red - two expected check-ins missed |
-| Never contacted | neutral - waiting |
+| Contact within 30 minutes | Green — all good |
+| Silent for 30 to under 60 minutes | Amber — one expected check-in missed |
+| Silent for at least 60 minutes | Red — two expected check-ins missed |
+| Never contacted | Neutral — waiting |
+| Monitoring stopped intentionally | Paused, without an offline alert when the stop message is delivered |
 
-The away phone discovers named home phones from their messages. Leave
-**Monitor all home phones** checked, or turn it off and check only the phones
-whose logs, event notifications, and offline warnings you want. Swipe any log
-entry left or right to delete that entry permanently.
+Check-ins are silent and do not fill the live log. Swipe an individual visible
+log entry left or right to remove it permanently.
 
-## Setup checklist (home phone)
+## Important behavior
 
-1. Save a unique phone name, such as `S10 Plus`.
-2. Generate + save the channel; share it to every home and away phone.
-3. Plug into the charger and join Wi-Fi.
-4. Exempt from battery optimization (button inside the app). Samsung users:
-   also Settings > Battery > Background limits > Never sleeping apps.
-5. Press **Start**. Screen off is fine.
+- Power alerts are immediate when Home monitoring is started and the phone
+  still has an internet path.
+- If an outage also turns off the router, the Home phone queues its power event
+  and sends it after connectivity returns.
+- Wi-Fi or internet loss alone is reported as **&lt;phone name&gt; is offline**
+  after the two-missed-check-in threshold. Silence cannot prove that mains
+  power was lost, so Argus does not label it as a power cut.
+- If a Home phone is stopped while already offline, its silent pause message
+  cannot reach the Away phone and an offline warning may still appear.
+- Android manufacturer battery management can delay background work. The
+  battery-optimization exemption is therefore part of setup, especially on
+  Samsung phones.
 
-On the away phone, save its name and the same channel, press **Start**, then
-choose **Monitor all home phones** or a subset of discovered phones.
+## Privacy and security
 
-## Alerts reference
+Argus requires no account and has no server for you to deploy or maintain.
+Messages travel over HTTPS through the public [ntfy.sh](https://ntfy.sh/)
+service.
 
-```
-S10 Plus: Power lost at home  battery 84% at 27.5C, charging=false
-S10 Plus: Power is back       battery 91% at 29.0C, charging=true
-[Heartbeat]                     named 30-minute proof of life (hidden)
-S10 Plus: Phone has rebooted  home phone restarted and resumed monitoring
-S10 Plus: Test alert          end-to-end check from the home phone
-```
+The generated channel name is a high-entropy **shared secret**, not a private
+encryption key. Argus does not provide end-to-end encryption or cryptographic
+sender authentication. Anyone who learns the channel can potentially read its
+messages or publish forged messages to it, and the ntfy service processes the
+messages on its infrastructure.
 
-## Honest notes
+- Keep the generated channel private.
+- Do not include it in screenshots, issues, logs, or public documentation.
+- Generate a new channel on every phone if the existing one is exposed.
+- Do not send sensitive personal information in phone names or alert text.
 
-- The channel name IS the password - keep the generated random one.
-- Nothing is monitored until **Start** is pressed; **Stop** turns it off.
-- Power-cut alerts are immediate while a network path exists and monitoring is started.
-- If the router dies with the outage, the alert is stored locally and sent as
-  soon as connectivity returns.
-- Wi-Fi loss by itself is reported as **<phone name> is offline**, never falsely
-  labeled as a power cut.
-- Aggressive OEM battery managers are the main enemy; the in-app exemption +
-  Samsung never-sleep setting handles the common cases.
-- Roadmap: camera/mic event clips, BLE thermometer drift alerts,
-  light-sensor intrusion hint, barometer door-open blips.
+## Build and verify
 
-## Building
+Requirements: JDK 17+, Android SDK Platform 36.1, and Android Build Tools 36.0.0.
 
-JDK 17+, Android SDK platform 36.
+On Windows:
 
-```
-gradlew.bat :app:assembleDebug
-```
+~~~powershell
+gradlew.bat testDebugUnitTest lintDebug assembleDebug --no-daemon
+~~~
 
-## Layout
+The GitHub quality workflow runs the same unit-test, lint, and debug-build gate.
+Release signing uses a private local keystore and
+<code>keystore.properties</code>; both are excluded from Git and must never be
+committed. Back up those two local signing files together: future Argus updates
+must be signed with the same key.
 
-```
+## Project structure
+
+~~~text
 app/src/main/java/com/experiment/argus/
   MainActivity.kt              role picker, Home/Away screens, swipe log UI
   MainViewModel.kt             Start/Stop, names, selection, service control
-  DeviceMessage.kt             named home-phone message envelope
-  HomeDeviceStore.kt           per-home status and monitoring selection
-  EventLogStore.kt             durable individually removable alert log
-  StreamBus.kt                 service <-> UI bridge (events + running flag)
-  Ntfy.kt                      publish + JSON-stream subscribe
-  RoleStore.kt                 role/topic/name/identity/Start persistence
-  BatteryInfo.kt               level/temp/charging reads
-  push/EventStreamService.kt   foreground service: stream + notifications
-  sentinel/SentinelService.kt  live power/network watchdog
-  sentinel/                    power/boot receivers, durable retries, fallback worker
-```
+  DeviceMessage.kt             named Home-phone message envelope
+  HomeDeviceStore.kt           per-Home status and monitoring selection
+  EventLogStore.kt             durable, individually removable alert log
+  Ntfy.kt                      publish and JSON-stream subscribe
+  RoleStore.kt                 role, channel, name, identity, Start persistence
+  BatteryInfo.kt               battery level, temperature, and charging reads
+  push/EventStreamService.kt   Away foreground stream and notifications
+  sentinel/SentinelService.kt  Home power and network watchdog
+  sentinel/                    power/boot receivers, retries, fallback worker
+~~~
 
-minSdk 24 - Kotlin 2.2 - Compose M3 - OkHttp - WorkManager - foreground service
+Argus uses Kotlin, Jetpack Compose Material 3, OkHttp, WorkManager, and Android
+foreground services. Its minimum Android API level is 24.
+
+## License
+
+Argus is available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Personal, educational,
+research, public-interest, and other qualifying noncommercial use is permitted;
+commercial use is not.

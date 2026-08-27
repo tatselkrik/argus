@@ -8,8 +8,9 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Minimal ntfy.sh client - free pub/sub over plain HTTPS, no account needed.
- * The topic name is the shared secret between your two phones.
+ * Minimal ntfy.sh client - free pub/sub over HTTPS, no account needed.
+ * The topic name is the shared secret between participating devices. Messages
+ * are not end-to-end encrypted or authenticated beyond possession of the topic.
  */
 object Ntfy {
 
