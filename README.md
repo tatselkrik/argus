@@ -56,6 +56,19 @@ flowchart LR
 - No Argus account, subscription, analytics, advertising, location access, SMS,
   or phone-call permission.
 
+## Screenshots
+
+Screenshots will be added after the signed Version 1 build completes final
+on-device validation.
+
+| Home monitoring | Away monitoring |
+|---|---|
+| _Screenshot coming soon_ | _Screenshot coming soon_ |
+
+| First-launch role picker | Multi-phone status and logs |
+|---|---|
+| _Screenshot coming soon_ | _Screenshot coming soon_ |
+
 ## Install
 
 When a GitHub release is available, download its signed
