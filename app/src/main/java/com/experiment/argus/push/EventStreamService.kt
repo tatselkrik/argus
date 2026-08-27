@@ -136,7 +136,7 @@ class EventStreamService : Service() {
 
     private fun checkForSilence() {
         if (!RoleStore.monitoringEnabled(this)) return
-        val devices = HomeDeviceStore.load(this).filter { it.monitored }
+        val devices = HomeDeviceStore.load(this).filter { it.monitored && it.active }
         offlineNotified.retainAll(devices.map { it.id }.toSet())
         val now = System.currentTimeMillis()
         devices.forEach { device ->

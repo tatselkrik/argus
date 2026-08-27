@@ -10,6 +10,7 @@ data class HomeDeviceStatus(
     val lastContactAt: Long,
     val lastBattery: String,
     val lastPower: String,
+    val active: Boolean,
     val monitored: Boolean
 )
 
@@ -53,6 +54,7 @@ object HomeDeviceStore {
                 EventTitles.isReboot(title) -> title
                 else -> old?.lastPower.orEmpty()
             },
+            active = title != EventTitles.PAUSED,
             monitored = false
         )
         if (index >= 0) devices[index] = updated else devices.add(0, updated)
@@ -102,6 +104,7 @@ object HomeDeviceStore {
                             lastContactAt = item.optLong("lastContactAt"),
                             lastBattery = item.optString("lastBattery"),
                             lastPower = item.optString("lastPower"),
+                            active = item.optBoolean("active", true),
                             monitored = false
                         )
                     )
@@ -119,6 +122,7 @@ object HomeDeviceStore {
                 put("lastContactAt", device.lastContactAt)
                 put("lastBattery", device.lastBattery)
                 put("lastPower", device.lastPower)
+                put("active", device.active)
             })
         }
         prefs(context).edit().putString(KEY_DEVICES, array.toString()).apply()

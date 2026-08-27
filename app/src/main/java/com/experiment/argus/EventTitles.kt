@@ -7,6 +7,7 @@ object EventTitles {
     const val REBOOTED = "Phone has rebooted"
     const val OFFLINE = "Home phone is offline"
     const val HEARTBEAT = "[Heartbeat]"
+    const val PAUSED = "[Monitoring stopped]"
     const val TEST = "[Test]"
 
     fun isPower(title: String): Boolean =
@@ -14,7 +15,7 @@ object EventTitles {
 
     fun isReboot(title: String): Boolean = title == REBOOTED || title == "[Rebooted]"
 
-    fun isVisibleInLog(title: String): Boolean = title != HEARTBEAT
+    fun isVisibleInLog(title: String): Boolean = title != HEARTBEAT && title != PAUSED
 }
 
 /** Shared watchdog timing so sender, receiver, UI, and tests stay aligned. */

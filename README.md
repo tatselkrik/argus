@@ -25,6 +25,11 @@ Monitoring is deliberately user-controlled. **Start** keeps the selected role
 active in the background and across reboot. **Stop** cancels its services,
 heartbeats, queued alerts, and offline detection.
 
+When a connected home phone is stopped intentionally, it sends one silent
+state update so the away phone shows **Home monitoring stopped** instead of
+later reporting that phone offline. If that update cannot be delivered because
+the network is already unavailable, the away phone may still report silence.
+
 ## Notifications - how they work
 
 - The away phone runs an **Android foreground service** holding the ntfy stream.

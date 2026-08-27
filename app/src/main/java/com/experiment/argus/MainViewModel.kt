@@ -80,11 +80,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setRole(role: String) {
         val ctx = getApplication<Application>()
+        val pausedMessage = homePausedMessage(ctx)
         RoleStore.setMonitoringEnabled(ctx, false)
         SentinelJobs.cancel(ctx)
         SentinelService.stop(ctx)
         stopStream()
         RoleStore.setRole(ctx, role)
+        sendHomePaused(pausedMessage)
         _state.update { it.copy(selectingRole = false) }
         reload()
     }
@@ -114,10 +116,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stopMonitoring() {
         val ctx = getApplication<Application>()
+        val pausedMessage = homePausedMessage(ctx)
         RoleStore.setMonitoringEnabled(ctx, false)
         SentinelJobs.cancel(ctx)
         SentinelService.stop(ctx)
         stopStream()
+        sendHomePaused(pausedMessage)
         reload()
         _state.update { it.copy(message = "Argus stopped.") }
     }
@@ -241,6 +245,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 homeDevices = HomeDeviceStore.load(ctx),
                 monitorAll = HomeDeviceStore.monitorAll(ctx)
             )
+        }
+    }
+
+    private fun homePausedMessage(context: Application): Pair<String, String>? {
+        if (!RoleStore.monitoringEnabled(context) ||
+            RoleStore.role(context) != "sentinel"
+        ) return null
+        val topic = RoleStore.topic(context)
+        if (topic.isEmpty()) return null
+        val body = DeviceMessage.forThisPhone(
+            context,
+            "Monitoring was intentionally stopped on ${RoleStore.deviceName(context)}."
+        )
+        return topic to body
+    }
+
+    private fun sendHomePaused(message: Pair<String, String>?) {
+        if (message == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            Ntfy.send(message.first, EventTitles.PAUSED, message.second)
         }
     }
 

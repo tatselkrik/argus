@@ -71,6 +71,7 @@ class RoleStoreTest {
         assertTrue(EventTitles.isReboot("[Rebooted]"))
         assertTrue(EventTitles.isVisibleInLog(EventTitles.OFFLINE))
         assertTrue(!EventTitles.isVisibleInLog(EventTitles.HEARTBEAT))
+        assertTrue(!EventTitles.isVisibleInLog(EventTitles.PAUSED))
     }
 
     @Test

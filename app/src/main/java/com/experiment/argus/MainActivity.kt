@@ -540,6 +540,10 @@ fun HomePhoneRow(
             status = "Not monitored"
             statusColor = MaterialTheme.colorScheme.onSurfaceVariant
         }
+        !device.active -> {
+            status = "Home monitoring stopped"
+            statusColor = MaterialTheme.colorScheme.onSurfaceVariant
+        }
         ageMs < WatchdogTiming.HEARTBEAT_INTERVAL_MS -> {
             status = "Seen ${fmtAgo(ageMin)} · all good"
             statusColor = MaterialTheme.colorScheme.primary
