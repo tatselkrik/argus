@@ -14,6 +14,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.experiment.argus.EventTitles
+import com.experiment.argus.DeviceMessage
 import com.experiment.argus.MainActivity
 import com.experiment.argus.Ntfy
 import com.experiment.argus.R
@@ -27,7 +28,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * Visible, always-on watchdog for the home phone. Dynamic registration avoids
+ * Visible watchdog while the user has pressed Start. Dynamic registration avoids
  * Android/OEM suppression of manifest-declared implicit power broadcasts.
  */
 class SentinelService : Service() {
@@ -55,7 +56,10 @@ class SentinelService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (RoleStore.role(this) != "sentinel" || RoleStore.topic(this).isEmpty()) {
+        if (RoleStore.role(this) != "sentinel" ||
+            !RoleStore.monitoringEnabled(this) ||
+            RoleStore.topic(this).isEmpty()
+        ) {
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -64,8 +68,8 @@ class SentinelService : Service() {
         SentinelBus.charging.value = charging
         startForeground(SERVICE_ID, serviceNotification(charging))
 
+        executor.execute { sendHeartbeat() }
         if (heartbeatTask?.isCancelled != false) {
-            executor.execute { sendHeartbeat() }
             heartbeatTask = executor.scheduleWithFixedDelay(
                 { sendHeartbeat() },
                 WatchdogTiming.HEARTBEAT_INTERVAL_MINUTES,
@@ -106,10 +110,14 @@ class SentinelService : Service() {
     }
 
     private fun sendHeartbeat() {
-        if (RoleStore.role(this) != "sentinel") return
+        if (RoleStore.role(this) != "sentinel" || !RoleStore.monitoringEnabled(this)) return
         val topic = RoleStore.topic(this)
         if (topic.isEmpty()) return
-        Ntfy.send(topic, EventTitles.HEARTBEAT, batterySummary(this))
+        Ntfy.send(
+            topic,
+            EventTitles.HEARTBEAT,
+            DeviceMessage.forThisPhone(this, batterySummary(this))
+        )
     }
 
     override fun onDestroy() {
@@ -130,7 +138,7 @@ class SentinelService : Service() {
     private fun serviceNotification(charging: Boolean): Notification =
         NotificationCompat.Builder(this, CH_SENTINEL)
             .setSmallIcon(R.drawable.ic_stat)
-            .setContentTitle("Argus is guarding home")
+            .setContentTitle("Argus: ${RoleStore.deviceName(this)}")
             .setContentText(if (charging) "On charger · power monitoring active" else "Not charging · monitoring active")
             .setOngoing(true)
             .setOnlyAlertOnce(true)

@@ -1,7 +1,7 @@
 # Argus 🛡️
 
-Named for Argus Panoptes, the hundred-eyed guardian. One old Android phone
-becomes your home's watchdog; your daily phone gets real push notifications.
+Named for Argus Panoptes, the hundred-eyed guardian. One or more old Android
+phones become home watchdogs; your daily phone gets real push notifications.
 
 No accounts. No server. No subscription. Events travel over ntfy.sh (free
 public pub/sub); a random channel name is your private key.
@@ -18,63 +18,77 @@ First launch asks for a role.
 
 | Role | Phone | Behavior |
 |---|---|---|
-| **Sentinel** | old phone | Plugged in at home forever. Live charger monitoring, 30-minute heartbeats, reboot self-report. |
-| **Companion** | daily phone | Foreground service keeps a live stream running and raises **system push notifications** (sound + vibration) even when the app is swiped away. |
+| **Home** | old phone(s) | Each has its own saved name. After **Start**, it monitors charging, sends 30-minute check-ins, and reports reboots. |
+| **Away** | daily phone | After **Start**, it listens for named home phones and raises **system notifications** for all or only the phones you select. |
+
+Monitoring is deliberately user-controlled. **Start** keeps the selected role
+active in the background and across reboot. **Stop** cancels its services,
+heartbeats, queued alerts, and offline detection.
 
 ## Notifications - how they work
 
-- The companion runs an **Android foreground service** holding the ntfy stream.
-- The sentinel runs its own **foreground watchdog service**, which keeps
+- The away phone runs an **Android foreground service** holding the ntfy stream.
+- Each home phone runs its own **foreground watchdog service**, which keeps
   Samsung/modern Android charger monitoring active after the app is swiped away.
-- You will see a quiet, permanent notification: *"Argus is watching home"*.
+- While started, you will see a quiet, permanent Argus notification.
   That is the trade Android requires for background work - and it doubles as a
   heartbeat you can glance at.
-- Every **Power lost at home** / **Power is back** / **Phone has rebooted** /
-  **[Test]** event
-  becomes a heads-up notification on channel *Home events* (high importance).
-- **[Heartbeat]** check-ins every 30 minutes never buzz your phone or appear in the live log;
+- Every selected home phone is identified by name. Notifications are labeled,
+  for example, **S10 Plus: Power lost at home** or **S10 Plus is offline**.
+- **[Heartbeat]** check-ins every 30 minutes never buzz your phone or appear
+  in the live log;
   they silently refresh the status banner and enable offline detection.
   An hourly WorkManager heartbeat remains as a fallback.
 - One missed check-in is tolerated. If no contact arrives for one hour—two
-  consecutive expected check-ins—the companion warns
-  **Home phone is offline** and records it in the live log. This means power,
+  consecutive expected check-ins—the away phone warns
+  **<phone name> is offline** and records it in the live log. This means power,
   Wi-Fi, or internet may be down; silence alone cannot distinguish which one.
-- Accept the notification permission prompt on first run (Android 13+).
+- Accept the notification permission prompt when pressing **Start** (Android 13+).
 
-## Status banner logic (companion)
+## Per-phone status logic (away phone)
 
-| Condition | Banner |
+| Condition | Status |
 |---|---|
 | Contact < 30 min | green - all good |
 | Silent 30-<60 min | amber - one expected check-in missed |
 | Silent >= 60 min | red - two expected check-ins missed |
 | Never contacted | neutral - waiting |
 
-## Setup checklist (sentinel)
+The away phone discovers named home phones from their messages. Leave
+**Monitor all home phones** checked, or turn it off and check only the phones
+whose logs, event notifications, and offline warnings you want. Swipe any log
+entry left or right to delete that entry permanently.
 
-1. Generate + save channel; share it to your companion phone.
-2. Plug into charger, join Wi-Fi.
-3. Exempt from battery optimization (button inside the app). Samsung users:
+## Setup checklist (home phone)
+
+1. Save a unique phone name, such as `S10 Plus`.
+2. Generate + save the channel; share it to every home and away phone.
+3. Plug into the charger and join Wi-Fi.
+4. Exempt from battery optimization (button inside the app). Samsung users:
    also Settings > Battery > Background limits > Never sleeping apps.
-4. Screen off is fine. Walk away.
+5. Press **Start**. Screen off is fine.
+
+On the away phone, save its name and the same channel, press **Start**, then
+choose **Monitor all home phones** or a subset of discovered phones.
 
 ## Alerts reference
 
 ```
-Power lost at home  battery 84% at 27.5C, charging=false
-Power is back       battery 91% at 29.0C, charging=true
-[Heartbeat]   30-minute proof of life (no notification)
-Phone has rebooted  sentinel restarted and back on duty
-[Test]        end-to-end check from either phone
+S10 Plus: Power lost at home  battery 84% at 27.5C, charging=false
+S10 Plus: Power is back       battery 91% at 29.0C, charging=true
+[Heartbeat]                     named 30-minute proof of life (hidden)
+S10 Plus: Phone has rebooted  home phone restarted and resumed monitoring
+S10 Plus: Test alert          end-to-end check from the home phone
 ```
 
 ## Honest notes
 
 - The channel name IS the password - keep the generated random one.
-- Power-cut alerts are immediate while a network path exists.
+- Nothing is monitored until **Start** is pressed; **Stop** turns it off.
+- Power-cut alerts are immediate while a network path exists and monitoring is started.
 - If the router dies with the outage, the alert is stored locally and sent as
   soon as connectivity returns.
-- Wi-Fi loss by itself is reported as **Home phone is offline**, never falsely
+- Wi-Fi loss by itself is reported as **<phone name> is offline**, never falsely
   labeled as a power cut.
 - Aggressive OEM battery managers are the main enemy; the in-app exemption +
   Samsung never-sleep setting handles the common cases.
@@ -93,11 +107,14 @@ gradlew.bat :app:assembleDebug
 
 ```
 app/src/main/java/com/experiment/argus/
-  MainActivity.kt              role picker, Sentinel screen, Companion screen
-  MainViewModel.kt             state; observes StreamBus; controls service
+  MainActivity.kt              role picker, Home/Away screens, swipe log UI
+  MainViewModel.kt             Start/Stop, names, selection, service control
+  DeviceMessage.kt             named home-phone message envelope
+  HomeDeviceStore.kt           per-home status and monitoring selection
+  EventLogStore.kt             durable individually removable alert log
   StreamBus.kt                 service <-> UI bridge (events + running flag)
   Ntfy.kt                      publish + JSON-stream subscribe
-  RoleStore.kt                 role/topic/status persistence
+  RoleStore.kt                 role/topic/name/identity/Start persistence
   BatteryInfo.kt               level/temp/charging reads
   push/EventStreamService.kt   foreground service: stream + notifications
   sentinel/SentinelService.kt  live power/network watchdog

@@ -11,7 +11,9 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.experiment.argus.EventTitles
 import com.experiment.argus.EventLogStore
+import com.experiment.argus.DeviceMessage
 import com.experiment.argus.FeedEvent
+import com.experiment.argus.HomeDeviceStore
 import com.experiment.argus.MainActivity
 import com.experiment.argus.Ntfy
 import com.experiment.argus.R
@@ -22,10 +24,11 @@ import okhttp3.Call
 import kotlin.concurrent.thread
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Foreground service that keeps the ntfy stream alive even when the app UI is
- * swiped away. Raises a system notification for every power/reboot/test event;
+ * User-started foreground service that keeps the ntfy stream alive even when
+ * the app UI is swiped away. Raises a notification for selected home phones;
  * heartbeats only update the stored status silently.
  *
  * The persistent low-priority "Argus is watching home" notification is the
@@ -38,7 +41,7 @@ class EventStreamService : Service() {
     private val activeCall = AtomicReference<Call?>(null)
     private var worker: Thread? = null
     private var monitor: Thread? = null
-    @Volatile private var offlineNotified = false
+    private val offlineNotified = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var monitoringSince = 0L
 
     override fun onBind(intent: Intent?) = null
@@ -50,7 +53,10 @@ class EventStreamService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val topic = RoleStore.topic(this)
-        if (RoleStore.role(this) != "companion" || topic.isEmpty()) {
+        if (RoleStore.role(this) != "companion" ||
+            !RoleStore.monitoringEnabled(this) ||
+            topic.isEmpty()
+        ) {
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -61,10 +67,12 @@ class EventStreamService : Service() {
         stopStreamWorker()
         val myGeneration = generation.incrementAndGet()
         monitoringSince = System.currentTimeMillis()
-        offlineNotified = false
+        offlineNotified.clear()
         worker = thread(name = "argus-stream") {
             while (generation.get() == myGeneration) {
-                if (RoleStore.role(applicationContext) != "companion") break
+                if (RoleStore.role(applicationContext) != "companion" ||
+                    !RoleStore.monitoringEnabled(applicationContext)
+                ) break
                 val current = RoleStore.topic(applicationContext)
                 if (current.isEmpty()) break
                 var iterationCall: Call? = null
@@ -97,7 +105,9 @@ class EventStreamService : Service() {
             if (generation.get() == myGeneration) StreamBus.running.value = false
         }
         monitor = thread(name = "argus-health-monitor") {
-            while (generation.get() == myGeneration) {
+            while (generation.get() == myGeneration &&
+                RoleStore.monitoringEnabled(applicationContext)
+            ) {
                 checkForSilence()
                 try {
                     Thread.sleep(WatchdogTiming.MONITOR_INTERVAL_MS)
@@ -110,39 +120,44 @@ class EventStreamService : Service() {
     }
 
     private fun deliver(title: String, message: String, timeSec: Long) {
-        RoleStore.noteContact(this)
-        when {
-            title == EventTitles.HEARTBEAT ->
-                RoleStore.noteHeartbeat(this, message, RoleStore.lastPowerText(this))
-            EventTitles.isPower(title) ->
-                RoleStore.notePowerEvent(this, title + "  " + message)
-            EventTitles.isReboot(title) ->
-                RoleStore.notePowerEvent(this, title)
-        }
-        offlineNotified = false
-        val event = FeedEvent(title, message, timeSec)
-        if (EventTitles.isVisibleInLog(title)) EventLogStore.append(this, event)
+        if (!RoleStore.monitoringEnabled(this)) return
+        val source = DeviceMessage.decodeOrLegacy(message)
+        HomeDeviceStore.noteContact(this, source, title)
+        offlineNotified.remove(source.deviceId)
+
+        val displayTitle = titleForDevice(source.deviceName, title)
+        val event = FeedEvent(displayTitle, source.body, timeSec)
+        val shouldSurface = HomeDeviceStore.isMonitored(this, source.deviceId) &&
+            EventTitles.isVisibleInLog(title)
+        if (shouldSurface) EventLogStore.append(this, event)
         StreamBus.events.tryEmit(event)
-        if (EventTitles.isVisibleInLog(title)) notifyEvent(title, message)
+        if (shouldSurface) notifyEvent(displayTitle, source.body)
     }
 
     private fun checkForSilence() {
-        val lastContact = RoleStore.lastHeartbeatAt(this)
-        val reference = if (lastContact == 0L) monitoringSince else lastContact
-        val silentFor = System.currentTimeMillis() - reference
-        if (!offlineNotified && silentFor >= WatchdogTiming.OFFLINE_AFTER_MS) {
-            offlineNotified = true
-            val message =
-                "No contact for one hour (two expected check-ins missed). This can mean Wi-Fi, internet, or power is unavailable."
-            val event = FeedEvent(
-                EventTitles.OFFLINE,
-                message,
-                System.currentTimeMillis() / 1000L
-            )
-            EventLogStore.append(this, event)
-            StreamBus.events.tryEmit(event)
-            notifyEvent(EventTitles.OFFLINE, message)
+        if (!RoleStore.monitoringEnabled(this)) return
+        val devices = HomeDeviceStore.load(this).filter { it.monitored }
+        offlineNotified.retainAll(devices.map { it.id }.toSet())
+        val now = System.currentTimeMillis()
+        devices.forEach { device ->
+            val reference = maxOf(device.lastContactAt, monitoringSince)
+            if (now - reference >= WatchdogTiming.OFFLINE_AFTER_MS &&
+                offlineNotified.add(device.id)
+            ) {
+                val title = "${device.name} is offline"
+                val message =
+                    "No contact for one hour (two expected check-ins missed). Wi-Fi, internet, power, or Argus monitoring may be unavailable."
+                val event = FeedEvent(title, message, now / 1000L)
+                EventLogStore.append(this, event)
+                StreamBus.events.tryEmit(event)
+                notifyEvent(title, message)
+            }
         }
+    }
+
+    private fun titleForDevice(deviceName: String, title: String): String = when (title) {
+        EventTitles.TEST -> "$deviceName: Test alert"
+        else -> "$deviceName: $title"
     }
 
     override fun onDestroy() {
@@ -167,8 +182,8 @@ class EventStreamService : Service() {
     private fun serviceNotification(): Notification =
         NotificationCompat.Builder(this, CH_SERVICE)
             .setSmallIcon(R.drawable.ic_stat)
-            .setContentTitle("Argus is watching home")
-            .setContentText("Listening for home alerts")
+            .setContentTitle("Argus: ${RoleStore.deviceName(this)}")
+            .setContentText("Listening for selected home phones")
             .setOngoing(true)
             .setContentIntent(mainPendingIntent())
             .build()

@@ -31,7 +31,9 @@ object PendingAlerts {
     /** Returns true only when no deliverable alerts remain. */
     @Synchronized
     fun flush(context: Context): Boolean {
-        if (RoleStore.role(context) != "sentinel") {
+        if (RoleStore.role(context) != "sentinel" ||
+            !RoleStore.monitoringEnabled(context)
+        ) {
             clear(context)
             return true
         }

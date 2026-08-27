@@ -24,6 +24,37 @@ class RoleStoreTest {
     }
 
     @Test
+    fun normalizeDeviceName_acceptsUsefulNamesAndRejectsUnsafeOnes() {
+        assertEquals("S10 Plus", RoleStore.normalizeDeviceName("  S10 Plus  "))
+        assertNull(RoleStore.normalizeDeviceName(""))
+        assertNull(RoleStore.normalizeDeviceName("phone\nname"))
+        assertNull(RoleStore.normalizeDeviceName("x".repeat(41)))
+    }
+
+    @Test
+    fun deviceMessage_roundTripsIdentityAndBodyWithSeparators() {
+        val encoded = DeviceMessage.encode(
+            deviceId = "device-1234",
+            deviceName = "S10 Plus / Home",
+            body = "battery 80% | charging=true"
+        )
+
+        assertEquals(
+            DeviceMessage.Decoded(
+                deviceId = "device-1234",
+                deviceName = "S10 Plus / Home",
+                body = "battery 80% | charging=true"
+            ),
+            DeviceMessage.decode(encoded)
+        )
+        assertNull(DeviceMessage.decode("legacy message"))
+        assertEquals(
+            DeviceMessage.LEGACY_DEVICE_NAME,
+            DeviceMessage.decodeOrLegacy("legacy message").deviceName
+        )
+    }
+
+    @Test
     fun generateTopic_usesExpectedSecureTopicShape() {
         val topics = List(100) { RoleStore.generateTopic() }
 

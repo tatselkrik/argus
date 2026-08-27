@@ -2,7 +2,9 @@ package com.experiment.argus
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import java.security.SecureRandom
+import java.util.UUID
 
 /** Tiny SharedPreferences wrapper holding role, topic and last-known status. */
 object RoleStore {
@@ -18,6 +20,31 @@ object RoleStore {
     fun setRole(context: Context, role: String) =
         prefs(context).edit().putString("role", role).apply()
 
+    // explicit user control: background work runs only while this is enabled
+    fun monitoringEnabled(context: Context): Boolean =
+        prefs(context).getBoolean("monitoringEnabled", false)
+
+    fun setMonitoringEnabled(context: Context, enabled: Boolean) =
+        prefs(context).edit().putBoolean("monitoringEnabled", enabled).apply()
+
+    // stable device identity used to distinguish multiple phones on one topic
+    @Synchronized
+    fun deviceId(context: Context): String {
+        val existing = prefs(context).getString("deviceId", null)
+        if (!existing.isNullOrBlank()) return existing
+        val generated = UUID.randomUUID().toString()
+        prefs(context).edit().putString("deviceId", generated).apply()
+        return generated
+    }
+
+    fun deviceName(context: Context): String =
+        prefs(context).getString("deviceName", null)?.let(::normalizeDeviceName)
+            ?: normalizeDeviceName(Build.MODEL)
+            ?: "Android phone"
+
+    fun setDeviceName(context: Context, name: String) =
+        prefs(context).edit().putString("deviceName", name).apply()
+
     // topic (shared channel name)
     fun topic(context: Context): String = prefs(context).getString("topic", "") ?: ""
     fun setTopic(context: Context, topic: String) {
@@ -26,30 +53,10 @@ object RoleStore {
         if (normalized != this.topic(context)) {
             editor.remove("lastHbAt").remove("lastBatt").remove("lastPow")
             EventLogStore.clear(context)
+            HomeDeviceStore.clear(context)
         }
         editor.apply()
     }
-
-    // companion-side last known state
-    fun lastHeartbeatAt(context: Context): Long = prefs(context).getLong("lastHbAt", 0L)
-    fun lastBatteryText(context: Context): String = prefs(context).getString("lastBatt", "") ?: ""
-    fun lastPowerText(context: Context): String = prefs(context).getString("lastPow", "") ?: ""
-
-    fun noteContact(context: Context) =
-        prefs(context).edit().putLong("lastHbAt", System.currentTimeMillis()).apply()
-
-    fun noteHeartbeat(context: Context, batteryText: String, powerText: String) =
-        prefs(context).edit()
-            .putLong("lastHbAt", System.currentTimeMillis())
-            .putString("lastBatt", batteryText)
-            .putString("lastPow", powerText)
-            .apply()
-
-    fun notePowerEvent(context: Context, summary: String) =
-        prefs(context).edit()
-            .putLong("lastHbAt", System.currentTimeMillis())
-            .putString("lastPow", summary)
-            .apply()
 
     /** Accepts a bare topic or a pasted https://ntfy.sh/<topic> URL. */
     fun normalizeTopic(input: String): String? {
@@ -69,6 +76,15 @@ object RoleStore {
             repeat(16) {
                 append(alphabet[secureRandom.nextInt(alphabet.length)])
             }
+        }
+    }
+
+    fun normalizeDeviceName(input: String): String? {
+        val name = input.trim()
+        return if (name.isNotEmpty() && name.length <= 40 && name.none { it.isISOControl() }) {
+            name
+        } else {
+            null
         }
     }
 }

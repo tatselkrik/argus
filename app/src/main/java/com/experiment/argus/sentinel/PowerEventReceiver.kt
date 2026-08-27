@@ -17,7 +17,9 @@ class PowerEventReceiver(
 ) : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (RoleStore.role(context) != "sentinel") return
+        if (RoleStore.role(context) != "sentinel" ||
+            !RoleStore.monitoringEnabled(context)
+        ) return
         val topic = RoleStore.topic(context)
         if (topic.isEmpty()) return
 

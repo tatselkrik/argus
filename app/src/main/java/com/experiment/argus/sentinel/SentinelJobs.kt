@@ -11,6 +11,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.experiment.argus.RoleStore
+import com.experiment.argus.DeviceMessage
 import java.util.concurrent.TimeUnit
 
 object SentinelJobs {
@@ -22,7 +23,9 @@ object SentinelJobs {
         .build()
 
     fun ensure(context: Context) {
-        if (RoleStore.role(context) != "sentinel") {
+        if (RoleStore.role(context) != "sentinel" ||
+            !RoleStore.monitoringEnabled(context)
+        ) {
             cancel(context)
             return
         }
@@ -51,12 +54,21 @@ object SentinelJobs {
         body: String,
         priority: Int
     ) {
-        if (RoleStore.role(context) != "sentinel") return
-        PendingAlerts.enqueue(context, topic, title, body, priority)
+        if (RoleStore.role(context) != "sentinel" ||
+            !RoleStore.monitoringEnabled(context)
+        ) return
+        PendingAlerts.enqueue(
+            context,
+            topic,
+            title,
+            DeviceMessage.forThisPhone(context, body),
+            priority
+        )
         if (!PendingAlerts.flush(context)) scheduleAlertFlush(context)
     }
 
     fun flushPendingNow(context: Context) {
+        if (!RoleStore.monitoringEnabled(context)) return
         if (!PendingAlerts.flush(context)) scheduleAlertFlush(context)
     }
 

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.experiment.argus.EventTitles
+import com.experiment.argus.DeviceMessage
 import com.experiment.argus.Ntfy
 import com.experiment.argus.RoleStore
 import com.experiment.argus.batterySummary
@@ -17,12 +18,18 @@ class HeartbeatWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        if (RoleStore.role(applicationContext) != "sentinel") return Result.success()
+        if (RoleStore.role(applicationContext) != "sentinel" ||
+            !RoleStore.monitoringEnabled(applicationContext)
+        ) return Result.success()
         val topic = RoleStore.topic(applicationContext)
         if (topic.isEmpty()) return Result.success()
         val summary = batterySummary(applicationContext)
         val (ok) = withContext(Dispatchers.IO) {
-            Ntfy.send(topic, EventTitles.HEARTBEAT, summary)
+            Ntfy.send(
+                topic,
+                EventTitles.HEARTBEAT,
+                DeviceMessage.forThisPhone(applicationContext, summary)
+            )
         }
         return if (ok) Result.success() else Result.retry()
     }

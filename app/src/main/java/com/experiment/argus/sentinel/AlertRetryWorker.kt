@@ -14,7 +14,9 @@ class AlertRetryWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        if (RoleStore.role(applicationContext) != "sentinel") return Result.success()
+        if (RoleStore.role(applicationContext) != "sentinel" ||
+            !RoleStore.monitoringEnabled(applicationContext)
+        ) return Result.success()
         val empty = withContext(Dispatchers.IO) {
             PendingAlerts.flush(applicationContext)
         }

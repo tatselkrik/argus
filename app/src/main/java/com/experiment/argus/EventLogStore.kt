@@ -28,6 +28,9 @@ object EventLogStore {
                     if (title.isEmpty()) continue
                     add(
                         FeedEvent(
+                            id = item.optString("id").ifEmpty {
+                                "legacy-$i-${item.optLong("timeSec")}-${title.hashCode()}-${item.optString("message").hashCode()}"
+                            },
                             title = title,
                             message = item.optString("message"),
                             timeSec = item.optLong("timeSec")
@@ -46,10 +49,16 @@ object EventLogStore {
             .apply()
     }
 
+    @Synchronized
+    fun remove(context: Context, eventId: String) {
+        save(context, load(context).filterNot { it.id == eventId })
+    }
+
     private fun save(context: Context, events: List<FeedEvent>) {
         val array = JSONArray()
         events.forEach { event ->
             array.put(JSONObject().apply {
+                put("id", event.id)
                 put("title", event.title)
                 put("message", event.message)
                 put("timeSec", event.timeSec)

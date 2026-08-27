@@ -15,20 +15,29 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
-data class FeedEvent(val title: String, val message: String, val timeSec: Long)
+data class FeedEvent(
+    val title: String,
+    val message: String,
+    val timeSec: Long,
+    val id: String = UUID.randomUUID().toString()
+)
 
 data class UiState(
     val role: String = "none",
+    val selectingRole: Boolean = false,
+    val monitoringEnabled: Boolean = false,
+    val deviceName: String = "",
+    val deviceNameInput: String = "",
     val topic: String = "",
     val topicInput: String = "",
     val events: List<FeedEvent> = emptyList(),
+    val homeDevices: List<HomeDeviceStatus> = emptyList(),
+    val monitorAll: Boolean = true,
     val live: Boolean = false,
     val busy: Boolean = false,
-    val message: String? = null,
-    val lastHbAt: Long = 0L,
-    val lastBatt: String = "",
-    val lastPow: String = ""
+    val message: String? = null
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -38,51 +47,99 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         reload()
-        // observe service state and live events pushed through the bus
         viewModelScope.launch {
             StreamBus.running.collect { live -> _state.update { it.copy(live = live) } }
         }
         viewModelScope.launch {
-            StreamBus.events.collect { ev -> handleEvent(ev.title, ev.message, ev.timeSec) }
+            StreamBus.events.collect { refreshCompanionData() }
         }
-        if (RoleStore.role(app) == "companion" && RoleStore.topic(app).isNotEmpty()) {
-            startStream()
-        } else if (RoleStore.role(app) == "sentinel" && RoleStore.topic(app).isNotEmpty()) {
-            SentinelJobs.ensure(app)
-            runCatching { SentinelService.start(app) }
-        }
+        reconcileBackgroundWork()
     }
 
     fun reload() {
         val ctx = getApplication<Application>()
+        val name = RoleStore.deviceName(ctx)
         _state.update {
             it.copy(
                 role = RoleStore.role(ctx),
+                monitoringEnabled = RoleStore.monitoringEnabled(ctx),
+                deviceName = name,
+                deviceNameInput = name,
                 topic = RoleStore.topic(ctx),
                 topicInput = RoleStore.topic(ctx),
                 events = EventLogStore.load(ctx),
-                lastHbAt = RoleStore.lastHeartbeatAt(ctx),
-                lastBatt = RoleStore.lastBatteryText(ctx),
-                lastPow = RoleStore.lastPowerText(ctx)
+                homeDevices = HomeDeviceStore.load(ctx),
+                monitorAll = HomeDeviceStore.monitorAll(ctx)
             )
         }
     }
 
+    fun beginRoleSwitch() = _state.update { it.copy(selectingRole = true) }
+
+    fun cancelRoleSwitch() = _state.update { it.copy(selectingRole = false) }
+
     fun setRole(role: String) {
-        RoleStore.setRole(getApplication(), role)
-        if (role == "sentinel") {
-            SentinelJobs.ensure(getApplication())
-            runCatching { SentinelService.start(getApplication()) }
-        } else {
-            SentinelJobs.cancel(getApplication())
-            SentinelService.stop(getApplication())
+        val ctx = getApplication<Application>()
+        RoleStore.setMonitoringEnabled(ctx, false)
+        SentinelJobs.cancel(ctx)
+        SentinelService.stop(ctx)
+        stopStream()
+        RoleStore.setRole(ctx, role)
+        _state.update { it.copy(selectingRole = false) }
+        reload()
+    }
+
+    fun startMonitoring() {
+        val ctx = getApplication<Application>()
+        val role = RoleStore.role(ctx)
+        if (role == "none") {
+            _state.update { it.copy(message = "Choose a role first.") }
+            return
         }
-        if (role == "companion") {
-            startStream()
-        } else {
-            stopStream()
+        if (RoleStore.topic(ctx).isEmpty()) {
+            _state.update { it.copy(message = "Save the shared channel before starting.") }
+            return
+        }
+        RoleStore.setMonitoringEnabled(ctx, true)
+        when (role) {
+            "sentinel" -> {
+                SentinelJobs.ensure(ctx)
+                runCatching { SentinelService.start(ctx) }
+            }
+            "companion" -> startStream()
         }
         reload()
+        _state.update { it.copy(message = "Argus started.") }
+    }
+
+    fun stopMonitoring() {
+        val ctx = getApplication<Application>()
+        RoleStore.setMonitoringEnabled(ctx, false)
+        SentinelJobs.cancel(ctx)
+        SentinelService.stop(ctx)
+        stopStream()
+        reload()
+        _state.update { it.copy(message = "Argus stopped.") }
+    }
+
+    fun setDeviceNameInput(value: String) = _state.update { it.copy(deviceNameInput = value) }
+
+    fun saveDeviceName() {
+        val normalized = RoleStore.normalizeDeviceName(_state.value.deviceNameInput)
+        if (normalized == null) {
+            _state.update { it.copy(message = "Phone name must be 1-40 characters.") }
+            return
+        }
+        val ctx = getApplication<Application>()
+        RoleStore.setDeviceName(ctx, normalized)
+        if (RoleStore.monitoringEnabled(ctx)) {
+            when (RoleStore.role(ctx)) {
+                "sentinel" -> runCatching { SentinelService.start(ctx) }
+                "companion" -> startStream()
+            }
+        }
+        reload()
+        _state.update { it.copy(message = "Phone name saved.") }
     }
 
     fun setTopicInput(value: String) = _state.update { it.copy(topicInput = value) }
@@ -93,89 +150,115 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(message = "Topic may contain only letters, numbers, dash, underscore.") }
             return
         }
-        RoleStore.setTopic(getApplication(), normalized)
-        when (_state.value.role) {
-            "sentinel" -> {
-                SentinelJobs.ensure(getApplication())
-                runCatching { SentinelService.start(getApplication()) }
-                stopStream()
+        val ctx = getApplication<Application>()
+        RoleStore.setTopic(ctx, normalized)
+        if (RoleStore.monitoringEnabled(ctx)) {
+            when (RoleStore.role(ctx)) {
+                "sentinel" -> {
+                    SentinelJobs.ensure(ctx)
+                    runCatching { SentinelService.start(ctx) }
+                    stopStream()
+                }
+                "companion" -> startStream()
             }
-            "companion" -> {
-                startStream()
-            }
-            else -> stopStream()
         }
-        _state.update { it.copy(message = "Channel saved: " + normalized) }
         reload()
+        _state.update { it.copy(message = "Channel saved.") }
     }
 
     fun generateTopic() = _state.update { it.copy(topicInput = RoleStore.generateTopic()) }
 
-    /** Sends a test publish so the user can verify the whole chain end to end. */
+    /** Sends a named Sentinel test event through the full notification path. */
     fun testAlert() {
-        val topic = _state.value.topic.ifEmpty { RoleStore.topic(getApplication()) }
+        val ctx = getApplication<Application>()
+        if (!RoleStore.monitoringEnabled(ctx)) {
+            _state.update { it.copy(message = "Press Start before sending a test alert.") }
+            return
+        }
+        val topic = _state.value.topic.ifEmpty { RoleStore.topic(ctx) }
         if (topic.isEmpty()) {
             _state.update { it.copy(message = "Set a channel first.") }
             return
         }
         _state.update { it.copy(busy = true) }
         viewModelScope.launch(Dispatchers.IO) {
-            val (ok, detail) = Ntfy.send(topic, EventTitles.TEST, "Hello from " +
-                (if (RoleStore.role(getApplication()) == "sentinel") "the home phone." else "your pocket phone."),
-                priority = 3)
+            val body = DeviceMessage.forThisPhone(
+                ctx,
+                "Hello from ${RoleStore.deviceName(ctx)}."
+            )
+            val (ok, detail) = Ntfy.send(topic, EventTitles.TEST, body, priority = 3)
             withContext(Dispatchers.Main) {
-                _state.update { it.copy(busy = false, message = if (ok) "Test sent (" + detail + ")" else "Send failed: " + detail) }
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        message = if (ok) "Test sent ($detail)" else "Send failed: $detail"
+                    )
+                }
             }
         }
     }
 
-    /** Ensures the foreground service is running - it owns the actual connection. */
+    /** Ensures the Companion foreground service owns the actual connection. */
     fun startStream() {
-        if (RoleStore.role(getApplication()) != "companion" ||
-            RoleStore.topic(getApplication()).isEmpty()
+        val ctx = getApplication<Application>()
+        if (RoleStore.role(ctx) != "companion" ||
+            !RoleStore.monitoringEnabled(ctx) ||
+            RoleStore.topic(ctx).isEmpty()
         ) return
         runCatching {
-            ContextCompat.startForegroundService(
-                getApplication(),
-                Intent(getApplication(), EventStreamService::class.java)
-            )
+            ContextCompat.startForegroundService(ctx, Intent(ctx, EventStreamService::class.java))
         }
     }
 
     fun stopStream() {
-        runCatching {
-            getApplication<Application>().stopService(
-                Intent(getApplication(), EventStreamService::class.java)
-            )
-        }
+        val ctx = getApplication<Application>()
+        runCatching { ctx.stopService(Intent(ctx, EventStreamService::class.java)) }
         _state.update { it.copy(live = false) }
     }
 
-    private fun handleEvent(title: String, message: String, timeSec: Long) {
-        val ctx = getApplication<Application>()
-        when {
-            title == EventTitles.HEARTBEAT ->
-                RoleStore.noteHeartbeat(ctx, message, RoleStore.lastPowerText(ctx))
-            EventTitles.isPower(title) -> RoleStore.notePowerEvent(ctx, title + "  " + message)
-            EventTitles.isReboot(title) -> RoleStore.notePowerEvent(ctx, title)
-        }
-        run {
-            _state.update {
-                it.copy(
-                    events = if (!EventTitles.isVisibleInLog(title)) {
-                        it.events
-                    } else {
-                        (listOf(FeedEvent(title, message, timeSec)) + it.events).take(100)
-                    },
-                    lastHbAt = RoleStore.lastHeartbeatAt(ctx),
-                    lastBatt = RoleStore.lastBatteryText(ctx),
-                    lastPow = RoleStore.lastPowerText(ctx)
-                )
-            }
-        }
+    fun setMonitorAll(enabled: Boolean) {
+        HomeDeviceStore.setMonitorAll(getApplication(), enabled)
+        refreshCompanionData()
+    }
+
+    fun setHomeDeviceMonitored(deviceId: String, monitored: Boolean) {
+        HomeDeviceStore.setMonitored(getApplication(), deviceId, monitored)
+        refreshCompanionData()
+    }
+
+    fun removeEvent(eventId: String) {
+        EventLogStore.remove(getApplication(), eventId)
+        refreshCompanionData()
     }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
 
-    // Intentionally do NOT stop the service here: push must survive the app being closed.
+    private fun refreshCompanionData() {
+        val ctx = getApplication<Application>()
+        _state.update {
+            it.copy(
+                events = EventLogStore.load(ctx),
+                homeDevices = HomeDeviceStore.load(ctx),
+                monitorAll = HomeDeviceStore.monitorAll(ctx)
+            )
+        }
+    }
+
+    private fun reconcileBackgroundWork() {
+        val ctx = getApplication<Application>()
+        if (!RoleStore.monitoringEnabled(ctx)) {
+            SentinelJobs.cancel(ctx)
+            SentinelService.stop(ctx)
+            stopStream()
+            return
+        }
+        when (RoleStore.role(ctx)) {
+            "sentinel" -> {
+                SentinelJobs.ensure(ctx)
+                runCatching { SentinelService.start(ctx) }
+            }
+            "companion" -> startStream()
+            else -> stopMonitoring()
+        }
+    }
 }
