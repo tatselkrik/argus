@@ -58,16 +58,11 @@ flowchart LR
 
 ## Screenshots
 
-Screenshots will be added after the signed Version 1 build completes final
-on-device validation.
+| Home monitoring | Away monitoring | First-launch role picker |
+|---|---|---|
+| <img src="docs/screenshots/home-monitoring.png" alt="Argus Home monitoring screen" width="260"> | <img src="docs/screenshots/away-monitoring.png" alt="Argus Away monitoring screen" width="260"> | <img src="docs/screenshots/first-launch-role-picker.jpg" alt="Argus first-launch role picker" width="260"> |
 
-| Home monitoring | Away monitoring |
-|---|---|
-| _Screenshot coming soon_ | _Screenshot coming soon_ |
-
-| First-launch role picker | Multi-phone status and logs |
-|---|---|
-| _Screenshot coming soon_ | _Screenshot coming soon_ |
+The private shared channel is redacted in public screenshots.
 
 ## Install
 
